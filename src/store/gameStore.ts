@@ -13,9 +13,13 @@ import {
 } from '../utils/game';
 
 interface GameStore extends GameState {
+  // 消除动画相关
+  clearingCells: { row: number; col: number }[];
+  setClearingCells: (cells: { row: number; col: number }[]) => void;
+  
   // Actions
   selectBlock: (block: Block | null) => void;
-  placeSelectedBlock: (pos: Position) => boolean;
+  placeSelectedBlock: (pos: Position) => { success: boolean; clearedCells?: { row: number; col: number }[] };
   restartGame: () => void;
   
   // Getters
@@ -33,6 +37,12 @@ export const useGameStore = create<GameStore>()(
       highScore: 0,
       isGameOver: false,
       selectedBlock: null,
+      clearingCells: [],
+
+      // Set clearing cells for animation
+      setClearingCells: (cells) => {
+        set({ clearingCells: cells });
+      },
 
       // Select a block
       selectBlock: (block) => {
@@ -44,10 +54,10 @@ export const useGameStore = create<GameStore>()(
         const state = get();
         const { board, selectedBlock, currentBlocks, score, highScore } = state;
 
-        if (!selectedBlock) return false;
+        if (!selectedBlock) return { success: false };
 
         // Check if can place
-        if (!canPlace(board, selectedBlock, pos)) return false;
+        if (!canPlace(board, selectedBlock, pos)) return { success: false };
 
         // Place block
         const colorIndex = COLOR_INDEX_MAP[selectedBlock.color];
@@ -56,11 +66,31 @@ export const useGameStore = create<GameStore>()(
         // Remove placed block from current blocks and immediately add a new one
         const newBlocks = currentBlocks
           .filter(b => b.id !== selectedBlock.id)
-          .concat(generateRandomBlock()); // 立即补充一个新方块
+          .concat(generateRandomBlock());
 
         // Check for clears
         const clearResult = checkClear(newBoard);
         let newScore = score + clearResult.score;
+
+        // Collect cleared cells for animation
+        const clearedCells: { row: number; col: number }[] = [];
+        
+        // Add cells from cleared rows
+        for (const row of clearResult.rows) {
+          for (let col = 0; col < 10; col++) {
+            clearedCells.push({ row, col });
+          }
+        }
+        
+        // Add cells from cleared columns
+        for (const col of clearResult.cols) {
+          for (let row = 0; row < 10; row++) {
+            // Avoid duplicates if both row and column are cleared
+            if (!clearResult.rows.includes(row)) {
+              clearedCells.push({ row, col });
+            }
+          }
+        }
 
         // Perform clears
         if (clearResult.rows.length > 0 || clearResult.cols.length > 0) {
@@ -80,9 +110,10 @@ export const useGameStore = create<GameStore>()(
           highScore: newHighScore,
           isGameOver: gameOver,
           selectedBlock: null,
+          clearingCells: clearedCells,
         });
 
-        return true;
+        return { success: true, clearedCells };
       },
 
       // Restart game
@@ -93,6 +124,7 @@ export const useGameStore = create<GameStore>()(
           score: 0,
           isGameOver: false,
           selectedBlock: null,
+          clearingCells: [],
         });
       },
 

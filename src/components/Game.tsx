@@ -14,6 +14,18 @@ const SOUNDS = {
   gameOver: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
 };
 
+// 找到方块的第一个砖块位置（相对于矩阵左上角）
+function getFirstBlockCell(shape: number[][]): { row: number; col: number } {
+  for (let i = 0; i < shape.length; i++) {
+    for (let j = 0; j < shape[i].length; j++) {
+      if (shape[i][j] === 1) {
+        return { row: i, col: j };
+      }
+    }
+  }
+  return { row: 0, col: 0 };
+}
+
 export function Game() {
   const selectedBlock = useGameStore((state) => state.selectedBlock);
   const placeSelectedBlock = useGameStore((state) => state.placeSelectedBlock);
@@ -21,14 +33,14 @@ export function Game() {
   const isGameOver = useGameStore((state) => state.isGameOver);
   const canPlaceBlock = useGameStore((state) => state.canPlaceBlock);
   const board = useGameStore((state) => state.board);
-  const score = useGameStore((state) => state.score);
+  const clearingCells = useGameStore((state) => state.clearingCells);
   
   const [hoverPos, setHoverPos] = useState<{row: number, col: number} | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [prevScore, setPrevScore] = useState(0);
-  const [clearingCells, setClearingCells] = useState<Set<string>>(new Set());
+  const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
   
   // Audio refs
+  const audioInitialized = useRef(false);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
   const dropSoundRef = useRef<HTMLAudioElement | null>(null);
   const clearSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -63,8 +75,26 @@ export function Game() {
     };
   }, []);
 
+  // Initialize audio on first user interaction
+  const initAudio = useCallback(() => {
+    if (!audioInitialized.current) {
+      audioInitialized.current = true;
+      // Pre-load audio by playing and pausing
+      [dropSoundRef, clearSoundRef, comboSoundRef, gameOverSoundRef].forEach(ref => {
+        if (ref.current) {
+          ref.current.play().then(() => {
+            ref.current?.pause();
+            if (ref.current) ref.current.currentTime = 0;
+          }).catch(() => {});
+        }
+      });
+    }
+  }, []);
+
   // Play sound effects
   const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
+    initAudio();
+    
     const soundMap = {
       drop: dropSoundRef.current,
       clear: clearSoundRef.current,
@@ -77,10 +107,11 @@ export function Game() {
       audio.currentTime = 0;
       audio.play().catch(() => {});
     }
-  }, []);
+  }, [initAudio]);
 
   // Toggle background music
   const toggleSound = () => {
+    initAudio();
     if (!soundEnabled) {
       setSoundEnabled(true);
       if (bgmRef.current) {
@@ -94,38 +125,28 @@ export function Game() {
     }
   };
 
-  // Check for score changes (clears) with animation
+  // Handle clearing animation and sound
   useEffect(() => {
-    if (score > prevScore && prevScore >= 0) {
-      const diff = score - prevScore;
-      const clearScore = diff;
+    if (clearingCells.length > 0) {
+      // Convert to Set for quick lookup
+      const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
+      setAnimatingCells(cellSet);
       
-      // Determine how many cells were cleared
-      const cellsCleared = Math.floor(clearScore / 10);
-      
-      // Create clearing animation for random cells
-      const cells = new Set<string>();
-      for (let i = 0; i < cellsCleared * 10 && i < 20; i++) {
-        const row = Math.floor(Math.random() * 10);
-        const col = Math.floor(Math.random() * 10);
-        cells.add(`${row}-${col}`);
-      }
-      setClearingCells(cells);
-      
-      // Play sound
-      if (clearScore >= 30) {
+      // Play appropriate sound
+      if (clearingCells.length >= 20) {
         playSound('combo');
-      } else if (clearScore > 0) {
+      } else {
         playSound('clear');
       }
       
       // Clear animation after duration
-      setTimeout(() => {
-        setClearingCells(new Set());
-      }, 300);
+      const timer = setTimeout(() => {
+        setAnimatingCells(new Set());
+      }, 400);
+      
+      return () => clearTimeout(timer);
     }
-    setPrevScore(score);
-  }, [score, prevScore, playSound]);
+  }, [clearingCells, playSound]);
 
   // Game over sound
   useEffect(() => {
@@ -141,8 +162,17 @@ export function Game() {
   const handleCellClick = (row: number, col: number) => {
     if (!selectedBlock) return;
     
-    const placed = placeSelectedBlock({ row, col });
-    if (placed) {
+    // 计算第一个砖块的偏移
+    const firstCell = getFirstBlockCell(selectedBlock.shape);
+    
+    // 调整放置位置，使第一个砖块出现在点击位置
+    const adjustedPos = {
+      row: row - firstCell.row,
+      col: col - firstCell.col,
+    };
+    
+    const result = placeSelectedBlock(adjustedPos);
+    if (result.success) {
       playSound('drop');
     }
   };
@@ -174,8 +204,14 @@ export function Game() {
   const handleTouchEnd = useCallback(() => {
     if (!selectedBlock || !hoverPos) return;
     
-    const placed = placeSelectedBlock(hoverPos);
-    if (placed) {
+    const firstCell = getFirstBlockCell(selectedBlock.shape);
+    const adjustedPos = {
+      row: hoverPos.row - firstCell.row,
+      col: hoverPos.col - firstCell.col,
+    };
+    
+    const result = placeSelectedBlock(adjustedPos);
+    if (result.success) {
       playSound('drop');
     }
     setHoverPos(null);
@@ -186,8 +222,11 @@ export function Game() {
     if (!selectedBlock || !hoverPos) return false;
     
     const { shape } = selectedBlock;
-    const relRow = rowIndex - hoverPos.row;
-    const relCol = colIndex - hoverPos.col;
+    const firstCell = getFirstBlockCell(shape);
+    
+    // 计算相对于第一个砖块的位置
+    const relRow = rowIndex - hoverPos.row + firstCell.row;
+    const relCol = colIndex - hoverPos.col + firstCell.col;
     
     if (relRow < 0 || relRow >= shape.length) return false;
     if (relCol < 0 || relCol >= shape[0].length) return false;
@@ -198,7 +237,14 @@ export function Game() {
   // Check if preview position is valid
   const isPreviewValid = (): boolean => {
     if (!selectedBlock || !hoverPos) return false;
-    return canPlaceBlock(selectedBlock, hoverPos);
+    
+    const firstCell = getFirstBlockCell(selectedBlock.shape);
+    const adjustedPos = {
+      row: hoverPos.row - firstCell.row,
+      col: hoverPos.col - firstCell.col,
+    };
+    
+    return canPlaceBlock(selectedBlock, adjustedPos);
   };
 
   // Helper function to get cell color class
@@ -220,9 +266,9 @@ export function Game() {
     return getColorClass(selectedBlock.color);
   };
 
-  // Check if cell is clearing
-  const isCellClearing = (row: number, col: number) => {
-    return clearingCells.has(`${row}-${col}`);
+  // Check if cell is animating
+  const isCellAnimating = (row: number, col: number) => {
+    return animatingCells.has(`${row}-${col}`);
   };
 
   // Get hint text
@@ -255,7 +301,7 @@ export function Game() {
                 row.map((cell, colIndex) => {
                   const showPreview = shouldShowPreview(rowIndex, colIndex);
                   const previewValid = isPreviewValid();
-                  const clearing = isCellClearing(rowIndex, colIndex);
+                  const animating = isCellAnimating(rowIndex, colIndex);
                   
                   return (
                     <div
@@ -278,7 +324,7 @@ export function Game() {
                           : ''
                         }
                         ${cell !== 0 ? 'block-3d' : ''}
-                        ${clearing ? 'clearing' : ''}
+                        ${animating ? 'clearing' : ''}
                       `}
                     />
                   );
@@ -293,7 +339,7 @@ export function Game() {
         <button
           onClick={() => {
             restartGame();
-            setPrevScore(0);
+            setAnimatingCells(new Set());
             if (soundEnabled && bgmRef.current) {
               bgmRef.current.play().catch(() => {});
             }
