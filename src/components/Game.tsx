@@ -38,6 +38,7 @@ export function Game() {
   const canPlaceBlock = useGameStore((state) => state.canPlaceBlock);
   const board = useGameStore((state) => state.board);
   const clearingCells = useGameStore((state) => state.clearingCells);
+  const score = useGameStore((state) => state.score);
   
   const [hoverPos, setHoverPos] = useState<{row: number, col: number} | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -54,7 +55,8 @@ export function Game() {
   const boardRef = useRef<HTMLDivElement>(null);
   
   // 防止音效重复播放的标记
-  const lastClearingTime = useRef<number>(0);
+  const lastScore = useRef<number>(0);
+  const isClearingRef = useRef<boolean>(false);
 
   // Initialize audio elements
   useEffect(() => {
@@ -98,6 +100,11 @@ export function Game() {
 
   // Play sound effects with retry
   const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
+    // 检查音效是否开启（drop 和 gameOver 始终播放，背景音乐由 soundEnabled 控制）
+    if (type !== 'drop' && type !== 'gameOver' && !soundEnabled) {
+      return;
+    }
+    
     const soundMap = {
       drop: dropSoundRef.current,
       clear: clearSoundRef.current,
@@ -123,7 +130,7 @@ export function Game() {
         });
       }
     }
-  }, []);
+  }, [soundEnabled]);
 
   // Toggle background music
   const toggleSound = () => {
@@ -140,27 +147,12 @@ export function Game() {
     }
   };
 
-  // Handle clearing animation and sound
+  // Handle clearing animation - 只处理动画，不播放音效
   useEffect(() => {
     if (clearingCells.length > 0) {
-      // 防止短时间内重复触发音效（500ms内只播放一次）
-      const now = Date.now();
-      if (now - lastClearingTime.current > 500) {
-        lastClearingTime.current = now;
-        
-        // Convert to Set for quick lookup
-        const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
-        setAnimatingCells(cellSet);
-        
-        // 延迟播放消除音效，确保放置音效先播放
-        setTimeout(() => {
-          if (clearingCells.length >= 20) {
-            playSound('combo');
-          } else {
-            playSound('clear');
-          }
-        }, 100);
-      }
+      // Convert to Set for quick lookup
+      const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
+      setAnimatingCells(cellSet);
       
       // Clear animation after duration
       const timer = setTimeout(() => {
@@ -169,7 +161,29 @@ export function Game() {
       
       return () => clearTimeout(timer);
     }
-  }, [clearingCells, playSound]);
+  }, [clearingCells]);
+
+  // Handle clearing sound - 基于分数变化，只播放一次
+  useEffect(() => {
+    // 只在分数增加且不是第一次时播放消除音效
+    if (score > lastScore.current && lastScore.current >= 0 && !isClearingRef.current) {
+      isClearingRef.current = true;
+      
+      // 计算消除的行/列数
+      const scoreDiff = score - lastScore.current;
+      
+      // 延迟播放消除音效
+      setTimeout(() => {
+        if (scoreDiff >= 30) {
+          playSound('combo');
+        } else if (scoreDiff > 0) {
+          playSound('clear');
+        }
+        isClearingRef.current = false;
+      }, 100);
+    }
+    lastScore.current = score;
+  }, [score, playSound]);
 
   // Game over sound
   useEffect(() => {
