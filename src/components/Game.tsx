@@ -295,8 +295,9 @@ export function Game() {
         <BlockSelector />
 
         <button onClick={() => restartGame()}
-          className="w-full mt-3 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105">
-          🔄 重新开始
+          className="w-full mt-3 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg">
+          <span className="text-xl">🔄</span>
+          <span>重新开始</span>
         </button>
 
         <div className="mt-3 h-6 text-center text-white/60 text-sm">{getHintText()}</div>
