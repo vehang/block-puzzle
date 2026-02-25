@@ -227,8 +227,11 @@ export function Game() {
         <CurrentScore />
         
         <div className="relative mb-4">
-          <div ref={boardRef} className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm"
-            onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+          <div ref={boardRef} 
+            className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm"
+            style={{ touchAction: 'none' }}
+            onTouchMove={(e) => { e.preventDefault(); handleTouchMove(e); }} 
+            onTouchEnd={handleTouchEnd}>
             <div className="grid grid-cols-10 gap-0.5">
               {board.map((row, ri) => row.map((cell, ci) => {
                 const preview = shouldShowPreview(ri, ci);
