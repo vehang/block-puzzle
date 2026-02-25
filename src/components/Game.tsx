@@ -2,7 +2,17 @@ import { useGameStore } from '../store/gameStore';
 import { BlockSelector } from './BlockSelector';
 import { ScoreBoard, CurrentScore } from './ScoreBoard';
 import { GameOver } from './GameOver';
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { getColorClass } from '../utils/blocks';
+
+// 音效 URLs (使用免费的音效)
+const SOUNDS = {
+  bgm: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
+  drop: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+  clear: 'https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3',
+  combo: 'https://assets.mixkit.co/active_storage/sfx/1997/1997-preview.mp3',
+  gameOver: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
+};
 
 export function Game() {
   const selectedBlock = useGameStore((state) => state.selectedBlock);
@@ -11,25 +21,165 @@ export function Game() {
   const isGameOver = useGameStore((state) => state.isGameOver);
   const canPlaceBlock = useGameStore((state) => state.canPlaceBlock);
   const board = useGameStore((state) => state.board);
+  const score = useGameStore((state) => state.score);
   
   const [hoverPos, setHoverPos] = useState<{row: number, col: number} | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [prevScore, setPrevScore] = useState(0);
+  const [clearingCells, setClearingCells] = useState<Set<string>>(new Set());
+  
+  // Audio refs
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const dropSoundRef = useRef<HTMLAudioElement | null>(null);
+  const clearSoundRef = useRef<HTMLAudioElement | null>(null);
+  const comboSoundRef = useRef<HTMLAudioElement | null>(null);
+  const gameOverSoundRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Board ref for touch events
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  // Initialize audio elements
+  useEffect(() => {
+    bgmRef.current = new Audio(SOUNDS.bgm);
+    bgmRef.current.loop = true;
+    bgmRef.current.volume = 0.3;
+    
+    dropSoundRef.current = new Audio(SOUNDS.drop);
+    dropSoundRef.current.volume = 0.5;
+    
+    clearSoundRef.current = new Audio(SOUNDS.clear);
+    clearSoundRef.current.volume = 0.6;
+    
+    comboSoundRef.current = new Audio(SOUNDS.combo);
+    comboSoundRef.current.volume = 0.6;
+    
+    gameOverSoundRef.current = new Audio(SOUNDS.gameOver);
+    gameOverSoundRef.current.volume = 0.7;
+    
+    return () => {
+      if (bgmRef.current) {
+        bgmRef.current.pause();
+      }
+    };
+  }, []);
+
+  // Play sound effects
+  const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
+    const soundMap = {
+      drop: dropSoundRef.current,
+      clear: clearSoundRef.current,
+      combo: comboSoundRef.current,
+      gameOver: gameOverSoundRef.current,
+    };
+    
+    const audio = soundMap[type];
+    if (audio) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    }
+  }, []);
+
+  // Toggle background music
+  const toggleSound = () => {
+    if (!soundEnabled) {
+      setSoundEnabled(true);
+      if (bgmRef.current) {
+        bgmRef.current.play().catch(() => {});
+      }
+    } else {
+      setSoundEnabled(false);
+      if (bgmRef.current) {
+        bgmRef.current.pause();
+      }
+    }
+  };
+
+  // Check for score changes (clears) with animation
+  useEffect(() => {
+    if (score > prevScore && prevScore >= 0) {
+      const diff = score - prevScore;
+      const clearScore = diff;
+      
+      // Determine how many cells were cleared
+      const cellsCleared = Math.floor(clearScore / 10);
+      
+      // Create clearing animation for random cells
+      const cells = new Set<string>();
+      for (let i = 0; i < cellsCleared * 10 && i < 20; i++) {
+        const row = Math.floor(Math.random() * 10);
+        const col = Math.floor(Math.random() * 10);
+        cells.add(`${row}-${col}`);
+      }
+      setClearingCells(cells);
+      
+      // Play sound
+      if (clearScore >= 30) {
+        playSound('combo');
+      } else if (clearScore > 0) {
+        playSound('clear');
+      }
+      
+      // Clear animation after duration
+      setTimeout(() => {
+        setClearingCells(new Set());
+      }, 300);
+    }
+    setPrevScore(score);
+  }, [score, prevScore, playSound]);
+
+  // Game over sound
+  useEffect(() => {
+    if (isGameOver) {
+      playSound('gameOver');
+      if (bgmRef.current) {
+        bgmRef.current.pause();
+      }
+    }
+  }, [isGameOver, playSound]);
 
   // Handle cell click for placing block
   const handleCellClick = (row: number, col: number) => {
     if (!selectedBlock) return;
     
     const placed = placeSelectedBlock({ row, col });
-    if (!placed) {
-      // Could add error feedback here
+    if (placed) {
+      playSound('drop');
     }
   };
 
-  // Handle cell hover
+  // Handle cell hover (PC)
   const handleCellHover = (row: number, col: number) => {
     if (selectedBlock) {
       setHoverPos({ row, col });
     }
   };
+
+  // Handle touch move (Mobile)
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!selectedBlock || !boardRef.current) return;
+    
+    const touch = e.touches[0];
+    const rect = boardRef.current.getBoundingClientRect();
+    const cellSize = rect.width / 10;
+    
+    const col = Math.floor((touch.clientX - rect.left) / cellSize);
+    const row = Math.floor((touch.clientY - rect.top) / cellSize);
+    
+    if (row >= 0 && row < 10 && col >= 0 && col < 10) {
+      setHoverPos({ row, col });
+    }
+  }, [selectedBlock]);
+
+  // Handle touch end (Mobile)
+  const handleTouchEnd = useCallback(() => {
+    if (!selectedBlock || !hoverPos) return;
+    
+    const placed = placeSelectedBlock(hoverPos);
+    if (placed) {
+      playSound('drop');
+    }
+    setHoverPos(null);
+  }, [selectedBlock, hoverPos, placeSelectedBlock, playSound]);
 
   // Check if a cell should show preview
   const shouldShowPreview = (rowIndex: number, colIndex: number): boolean => {
@@ -51,20 +201,61 @@ export function Game() {
     return canPlaceBlock(selectedBlock, hoverPos);
   };
 
+  // Helper function to get cell color class
+  const getCellColorClass = (cell: number): string => {
+    const colors: Record<number, string> = {
+      1: 'bg-gradient-to-br from-block-cyan to-cyan-600',
+      2: 'bg-gradient-to-br from-block-purple to-purple-700',
+      3: 'bg-gradient-to-br from-block-orange to-orange-600',
+      4: 'bg-gradient-to-br from-block-green to-green-600',
+      5: 'bg-gradient-to-br from-block-pink to-pink-600',
+      6: 'bg-gradient-to-br from-block-yellow to-yellow-600',
+    };
+    return colors[cell] || '';
+  };
+
+  // Get preview color based on selected block
+  const getPreviewColor = () => {
+    if (!selectedBlock) return '';
+    return getColorClass(selectedBlock.color);
+  };
+
+  // Check if cell is clearing
+  const isCellClearing = (row: number, col: number) => {
+    return clearingCells.has(`${row}-${col}`);
+  };
+
+  // Get hint text
+  const getHintText = () => {
+    if (isGameOver) return '';
+    if (selectedBlock) {
+      return typeof window !== 'undefined' && 'ontouchstart' in window 
+        ? '拖动到目标位置后松开放置'
+        : '点击游戏区域放置方块';
+    }
+    return '请先选择一个方块';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0c29] via-[#302b63] to-[#24243e] flex items-center justify-center p-4">
       <div className="bg-white/5 rounded-3xl p-4 shadow-2xl backdrop-blur-lg max-w-md w-full">
-        <ScoreBoard />
+        <ScoreBoard onSoundToggle={toggleSound} soundEnabled={soundEnabled} />
         <CurrentScore />
         
-        {/* Game Board with click handling */}
-        <div className="relative mb-6">
-          <div className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm">
+        {/* Game Board with click and touch handling */}
+        <div className="relative mb-4">
+          <div 
+            ref={boardRef}
+            className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm"
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
             <div className="grid grid-cols-10 gap-0.5">
               {board.map((row, rowIndex) =>
                 row.map((cell, colIndex) => {
                   const showPreview = shouldShowPreview(rowIndex, colIndex);
                   const previewValid = isPreviewValid();
+                  const clearing = isCellClearing(rowIndex, colIndex);
                   
                   return (
                     <div
@@ -73,20 +264,21 @@ export function Game() {
                       onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
                       onMouseLeave={() => setHoverPos(null)}
                       className={`
-                        aspect-square rounded-sm transition-all duration-200 cursor-pointer
+                        aspect-square rounded-sm transition-all duration-150 cursor-pointer
                         ${cell === 0 
                           ? 'bg-white/5 hover:bg-white/10' 
                           : ''
                         }
                         ${showPreview && previewValid
-                          ? 'bg-green-500/50 ring-1 ring-green-400'
+                          ? getPreviewColor() + ' opacity-60 ring-2 ring-green-400 shadow-lg'
                           : showPreview && !previewValid
-                          ? 'bg-red-500/50 ring-1 ring-red-400'
+                          ? 'bg-red-500/60 ring-2 ring-red-400'
                           : cell !== 0
                           ? getCellColorClass(cell)
                           : ''
                         }
-                        ${cell !== 0 ? 'shadow-lg' : ''}
+                        ${cell !== 0 ? 'block-3d' : ''}
+                        ${clearing ? 'clearing' : ''}
                       `}
                     />
                   );
@@ -99,34 +291,27 @@ export function Game() {
         <BlockSelector />
 
         <button
-          onClick={restartGame}
-          className="w-full mt-4 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 flex items-center justify-center gap-2"
+          onClick={() => {
+            restartGame();
+            setPrevScore(0);
+            if (soundEnabled && bgmRef.current) {
+              bgmRef.current.play().catch(() => {});
+            }
+          }}
+          className="w-full mt-3 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 flex items-center justify-center gap-2"
         >
           🔄 重新开始
         </button>
 
-        {/* Selected block indicator */}
-        {selectedBlock && (
-          <div className="mt-4 text-center text-white/60 text-sm">
-            点击游戏区域放置方块
-          </div>
-        )}
+        {/* Hint text - always visible */}
+        <div className="mt-3 h-6 flex items-center justify-center">
+          <span className="text-white/60 text-sm">
+            {getHintText()}
+          </span>
+        </div>
       </div>
 
       <GameOver isOpen={isGameOver} />
     </div>
   );
-}
-
-// Helper function to get cell color class
-function getCellColorClass(cell: number): string {
-  const colors: Record<number, string> = {
-    1: 'bg-gradient-to-br from-block-cyan to-cyan-600',
-    2: 'bg-gradient-to-br from-block-purple to-purple-700',
-    3: 'bg-gradient-to-br from-block-orange to-orange-600',
-    4: 'bg-gradient-to-br from-block-green to-green-600',
-    5: 'bg-gradient-to-br from-block-pink to-pink-600',
-    6: 'bg-gradient-to-br from-block-yellow to-yellow-600',
-  };
-  return colors[cell] || '';
 }

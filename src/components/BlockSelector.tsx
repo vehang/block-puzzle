@@ -6,11 +6,11 @@ export function BlockSelector() {
   const isGameOver = useGameStore((state) => state.isGameOver);
 
   return (
-    <div className="bg-black/20 rounded-2xl p-4">
-      <div className="text-center text-white/50 text-xs uppercase tracking-wider mb-4">
+    <div className="bg-black/20 rounded-2xl p-3">
+      <div className="text-center text-white/50 text-xs uppercase tracking-wider mb-2">
         待选方块
       </div>
-      <div className="flex justify-center gap-4 flex-wrap">
+      <div className="flex justify-center items-center gap-2 flex-wrap min-h-[80px]">
         {currentBlocks.map((block) => (
           <Block 
             key={block.id} 

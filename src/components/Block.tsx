@@ -42,16 +42,35 @@ export function Block({ block, disabled }: BlockProps) {
     selectBlock(isSelected ? null : block);
   };
 
-  const gridCols = block.shape[0].length;
-  const gridRows = block.shape.length;
-
+  // 计算方块的实际尺寸
+  const cols = block.shape[0].length;
+  const rows = block.shape.length;
+  
+  // 每个格子的基础大小
+  const baseCellSize = 16;
+  
+  // 计算方块需要的总尺寸
+  const blockWidth = cols * baseCellSize;
+  const blockHeight = rows * baseCellSize;
+  
+  // 容器最大尺寸
+  const maxSize = 70;
+  
+  // 只有当方块超过最大尺寸时才缩放
+  const needScale = blockWidth > maxSize || blockHeight > maxSize;
+  const scale = needScale ? maxSize / Math.max(blockWidth, blockHeight) : 1;
+  
+  // 实际显示的格子大小
+  const cellSize = Math.floor(baseCellSize * scale);
+  
   return (
     <div
       onClick={handleClick}
       className={`
-        p-2 rounded-xl transition-all duration-200 cursor-pointer
+        flex items-center justify-center
+        w-20 h-20 rounded-xl transition-all duration-200 cursor-pointer
         ${isSelected 
-          ? 'bg-white/20 scale-110 ring-2 ring-white/50' 
+          ? 'bg-white/20 scale-110 ring-2 ring-white/50 shadow-lg' 
           : 'bg-white/5 hover:bg-white/10'
         }
         ${!canBePlaced ? 'opacity-30 cursor-not-allowed' : ''}
@@ -59,10 +78,10 @@ export function Block({ block, disabled }: BlockProps) {
       `}
     >
       <div 
-        className="grid gap-0.5"
+        className="grid gap-px"
         style={{ 
-          gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${gridRows}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
+          gridTemplateRows: `repeat(${rows}, ${cellSize}px)`,
         }}
       >
         {block.shape.map((row, i) =>
@@ -70,12 +89,16 @@ export function Block({ block, disabled }: BlockProps) {
             <div
               key={`${i}-${j}`}
               className={`
-                w-4 h-4 rounded-sm transition-all
+                rounded-sm transition-all
                 ${cell === 1 
-                  ? getColorClass(block.color) + ' shadow-md' 
+                  ? getColorClass(block.color) + ' block-3d' 
                   : 'bg-transparent'
                 }
               `}
+              style={{
+                width: cellSize,
+                height: cellSize,
+              }}
             />
           ))
         )}

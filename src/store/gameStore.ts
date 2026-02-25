@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GameState, Block, Position } from '../types/game';
-import { generateBlocks } from '../utils/blocks';
+import { generateBlocks, generateRandomBlock } from '../utils/blocks';
 import {
   createEmptyBoard,
   canPlace,
@@ -53,8 +53,10 @@ export const useGameStore = create<GameStore>()(
         const colorIndex = COLOR_INDEX_MAP[selectedBlock.color];
         let newBoard = placeBlock(board, selectedBlock, pos, colorIndex);
 
-        // Remove placed block from current blocks
-        const newBlocks = currentBlocks.filter(b => b.id !== selectedBlock.id);
+        // Remove placed block from current blocks and immediately add a new one
+        const newBlocks = currentBlocks
+          .filter(b => b.id !== selectedBlock.id)
+          .concat(generateRandomBlock()); // 立即补充一个新方块
 
         // Check for clears
         const clearResult = checkClear(newBoard);
@@ -63,11 +65,6 @@ export const useGameStore = create<GameStore>()(
         // Perform clears
         if (clearResult.rows.length > 0 || clearResult.cols.length > 0) {
           newBoard = performClear(newBoard, clearResult.rows, clearResult.cols);
-        }
-
-        // Generate new blocks if all placed
-        if (newBlocks.length === 0) {
-          newBlocks.push(...generateBlocks());
         }
 
         // Check game over
