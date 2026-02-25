@@ -68,6 +68,9 @@ export function Game() {
   
   const boardRef = useRef<HTMLDivElement>(null);
   
+  // 触摸相关
+  const touchStartPos = useRef<{x: number, y: number, row: number, col: number} | null>(null);
+  
   // 关键：防止重复触发的锁
   const isProcessingRef = useRef(false);
   // 记录上次播放音效的时间
@@ -165,25 +168,58 @@ export function Game() {
     tryPlaceBlock(row, col);
   };
 
-  // 移动端触摸
-  const handleTouchMove = (e: React.TouchEvent) => {
+  // 触摸开始
+  const handleTouchStart = (e: React.TouchEvent) => {
     if (!selectedBlock || !boardRef.current) return;
+    
     const touch = e.touches[0];
     const rect = boardRef.current.getBoundingClientRect();
     const cellSize = rect.width / 10;
     const col = Math.floor((touch.clientX - rect.left) / cellSize);
     const row = Math.floor((touch.clientY - rect.top) / cellSize);
+    
+    // 记录起始位置
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY, row, col };
+    setHoverPos({ row, col });
+  };
+
+  // 触摸移动
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (!selectedBlock || !boardRef.current) return;
+    
+    const touch = e.touches[0];
+    const rect = boardRef.current.getBoundingClientRect();
+    const cellSize = rect.width / 10;
+    const col = Math.floor((touch.clientX - rect.left) / cellSize);
+    const row = Math.floor((touch.clientY - rect.top) / cellSize);
+    
     if (row >= 0 && row < 10 && col >= 0 && col < 10) {
       setHoverPos({ row, col });
     }
   };
 
+  // 触摸结束
   const handleTouchEnd = (e: React.TouchEvent) => {
-    e.preventDefault(); // 阻止后续的 click 事件
-    if (hoverPos) {
+    e.preventDefault();
+    if (!selectedBlock || !hoverPos) return;
+    
+    // 判断是点击还是滑动
+    const isTap = touchStartPos.current && 
+      Math.abs((e.changedTouches[0].clientX) - touchStartPos.current.x) < 10 &&
+      Math.abs((e.changedTouches[0].clientY) - touchStartPos.current.y) < 10;
+    
+    if (isTap) {
+      // 点击：方块左上角对齐点击位置
+      const { row, col } = hoverPos;
+      tryPlaceBlock(row, col);
+    } else {
+      // 滑动：使用当前位置放置
       tryPlaceBlock(hoverPos.row, hoverPos.col);
-      setHoverPos(null);
     }
+    
+    setHoverPos(null);
+    touchStartPos.current = null;
   };
 
   // 预览逻辑
@@ -230,6 +266,7 @@ export function Game() {
           <div ref={boardRef} 
             className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm"
             style={{ touchAction: 'none' }}
+            onTouchStart={handleTouchStart}
             onTouchMove={(e) => { e.preventDefault(); handleTouchMove(e); }} 
             onTouchEnd={handleTouchEnd}>
             <div className="grid grid-cols-10 gap-0.5">
