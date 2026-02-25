@@ -2,7 +2,7 @@ import { useGameStore } from '../store/gameStore';
 import { BlockSelector } from './BlockSelector';
 import { ScoreBoard, CurrentScore } from './ScoreBoard';
 import { GameOver } from './GameOver';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { getColorClass } from '../utils/blocks';
 
 // 音效
@@ -55,8 +55,13 @@ export function Game() {
     
     // 300ms 内不重复播放
     const now = Date.now();
-    if (now - lastSoundTimeRef.current < 300) return;
+    if (now - lastSoundTimeRef.current < 300) {
+      console.log('[音效] 防抖跳过:', type);
+      return;
+    }
     lastSoundTimeRef.current = now;
+    
+    console.log('[音效] 播放:', type, '时间:', now);
     
     const audio = audioCache[type];
     if (audio) {
@@ -86,7 +91,10 @@ export function Game() {
   // 核心：放置方块并播放音效
   const tryPlaceBlock = (row: number, col: number): boolean => {
     // 防止重复触发
-    if (isProcessingRef.current) return false;
+    if (isProcessingRef.current) {
+      console.log('[放置] 锁定中，跳过');
+      return false;
+    }
     if (!selectedBlock) return false;
     
     const firstCell = getFirstBlockCell(selectedBlock.shape);
@@ -94,11 +102,13 @@ export function Game() {
     
     // 锁定
     isProcessingRef.current = true;
+    console.log('[放置] 开始，位置:', adjustedPos);
     
     const result = placeSelectedBlock(adjustedPos);
     
     if (result.success) {
       const clearedCount = result.clearedCells?.length || 0;
+      console.log('[放置] 成功，消除数量:', clearedCount);
       
       if (clearedCount > 0) {
         // 有消除：播放消除音效
@@ -109,12 +119,16 @@ export function Game() {
       }
       
       // 延迟解锁，防止快速重复
-      setTimeout(() => { isProcessingRef.current = false; }, 300);
+      setTimeout(() => { 
+        isProcessingRef.current = false; 
+        console.log('[放置] 解锁');
+      }, 300);
       return true;
     }
     
     // 放置失败，立即解锁
     isProcessingRef.current = false;
+    console.log('[放置] 失败');
     return false;
   };
 
