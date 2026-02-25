@@ -80,8 +80,8 @@ export function Game() {
 
   // Play sound effects - 受 soundEnabled 控制
   const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
-    // 所有音效都受开关控制（除了游戏结束）
-    if (!soundEnabled && type !== 'gameOver') {
+    // 游戏结束音效始终播放，其他音效受开关控制
+    if (type !== 'gameOver' && !soundEnabled) {
       return;
     }
     
@@ -146,22 +146,19 @@ export function Game() {
       col: col - firstCell.col,
     };
     
-    const currentScore = useGameStore.getState().score;
     const result = placeSelectedBlock(adjustedPos);
     
     if (result.success) {
-      // 检查是否有消除（分数是否增加）
-      const newScore = useGameStore.getState().score;
-      if (newScore > currentScore) {
-        // 有消除，播放消除音效
-        const scoreDiff = newScore - currentScore;
-        if (scoreDiff >= 30) {
+      // 直接使用返回的 clearedCells 判断是否有消除
+      if (result.clearedCells && result.clearedCells.length > 0) {
+        // 有消除，立即播放消除音效
+        if (result.clearedCells.length >= 20) {
           playSound('combo');
         } else {
           playSound('clear');
         }
       } else {
-        // 无消除，播放放置音效
+        // 无消除，立即播放放置音效
         playSound('drop');
       }
     }
@@ -200,14 +197,11 @@ export function Game() {
       col: hoverPos.col - firstCell.col,
     };
     
-    const currentScore = useGameStore.getState().score;
     const result = placeSelectedBlock(adjustedPos);
     
     if (result.success) {
-      const newScore = useGameStore.getState().score;
-      if (newScore > currentScore) {
-        const scoreDiff = newScore - currentScore;
-        if (scoreDiff >= 30) {
+      if (result.clearedCells && result.clearedCells.length > 0) {
+        if (result.clearedCells.length >= 20) {
           playSound('combo');
         } else {
           playSound('clear');
