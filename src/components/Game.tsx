@@ -5,10 +5,14 @@ import { GameOver } from './GameOver';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { getColorClass } from '../utils/blocks';
 
-// 音效 URLs (使用免费的音效)
+// 音效 URLs - 使用更可靠的音效源
 const SOUNDS = {
   bgm: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
-  drop: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+  // 石头砸地面音效 - 使用多个备选
+  drop: [
+    'https://cdn.freesound.org/previews/531/531947_5765482-lq.mp3', // 石头撞击
+    'https://cdn.freesound.org/previews/171/171104_2394245-lq.mp3', // 砖块放置
+  ],
   clear: 'https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3',
   combo: 'https://assets.mixkit.co/active_storage/sfx/1997/1997-preview.mp3',
   gameOver: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
@@ -40,7 +44,6 @@ export function Game() {
   const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
   
   // Audio refs
-  const audioInitialized = useRef(false);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
   const dropSoundRef = useRef<HTMLAudioElement | null>(null);
   const clearSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -52,21 +55,36 @@ export function Game() {
 
   // Initialize audio elements
   useEffect(() => {
+    // 初始化背景音乐
     bgmRef.current = new Audio(SOUNDS.bgm);
     bgmRef.current.loop = true;
     bgmRef.current.volume = 0.3;
     
-    dropSoundRef.current = new Audio(SOUNDS.drop);
-    dropSoundRef.current.volume = 0.5;
+    // 初始化放置音效 - 使用第一个备选
+    dropSoundRef.current = new Audio(SOUNDS.drop[0]);
+    dropSoundRef.current.volume = 0.7;
+    dropSoundRef.current.preload = 'auto';
     
+    // 初始化消除音效
     clearSoundRef.current = new Audio(SOUNDS.clear);
     clearSoundRef.current.volume = 0.6;
+    clearSoundRef.current.preload = 'auto';
     
+    // 初始化连击音效
     comboSoundRef.current = new Audio(SOUNDS.combo);
     comboSoundRef.current.volume = 0.6;
+    comboSoundRef.current.preload = 'auto';
     
+    // 初始化游戏结束音效
     gameOverSoundRef.current = new Audio(SOUNDS.gameOver);
     gameOverSoundRef.current.volume = 0.7;
+    gameOverSoundRef.current.preload = 'auto';
+    
+    // 预加载所有音频
+    const allAudio = [bgmRef.current, dropSoundRef.current, clearSoundRef.current, comboSoundRef.current, gameOverSoundRef.current];
+    allAudio.forEach(audio => {
+      audio.load();
+    });
     
     return () => {
       if (bgmRef.current) {
@@ -75,26 +93,8 @@ export function Game() {
     };
   }, []);
 
-  // Initialize audio on first user interaction
-  const initAudio = useCallback(() => {
-    if (!audioInitialized.current) {
-      audioInitialized.current = true;
-      // Pre-load audio by playing and pausing
-      [dropSoundRef, clearSoundRef, comboSoundRef, gameOverSoundRef].forEach(ref => {
-        if (ref.current) {
-          ref.current.play().then(() => {
-            ref.current?.pause();
-            if (ref.current) ref.current.currentTime = 0;
-          }).catch(() => {});
-        }
-      });
-    }
-  }, []);
-
-  // Play sound effects
+  // Play sound effects with retry
   const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
-    initAudio();
-    
     const soundMap = {
       drop: dropSoundRef.current,
       clear: clearSoundRef.current,
@@ -104,14 +104,26 @@ export function Game() {
     
     const audio = soundMap[type];
     if (audio) {
+      // 重置播放位置并播放
       audio.currentTime = 0;
-      audio.play().catch(() => {});
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch((error) => {
+          console.log('Audio play failed:', type, error);
+          // 如果第一个 drop 音效失败，尝试第二个
+          if (type === 'drop' && SOUNDS.drop[1]) {
+            const backupAudio = new Audio(SOUNDS.drop[1]);
+            backupAudio.volume = 0.7;
+            backupAudio.play().catch(() => {});
+          }
+        });
+      }
     }
-  }, [initAudio]);
+  }, []);
 
   // Toggle background music
   const toggleSound = () => {
-    initAudio();
     if (!soundEnabled) {
       setSoundEnabled(true);
       if (bgmRef.current) {
@@ -132,12 +144,14 @@ export function Game() {
       const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
       setAnimatingCells(cellSet);
       
-      // Play appropriate sound
-      if (clearingCells.length >= 20) {
-        playSound('combo');
-      } else {
-        playSound('clear');
-      }
+      // 延迟播放消除音效，确保放置音效先播放
+      setTimeout(() => {
+        if (clearingCells.length >= 20) {
+          playSound('combo');
+        } else {
+          playSound('clear');
+        }
+      }, 100);
       
       // Clear animation after duration
       const timer = setTimeout(() => {
@@ -173,6 +187,7 @@ export function Game() {
     
     const result = placeSelectedBlock(adjustedPos);
     if (result.success) {
+      // 立即播放放置音效
       playSound('drop');
     }
   };
@@ -212,6 +227,7 @@ export function Game() {
     
     const result = placeSelectedBlock(adjustedPos);
     if (result.success) {
+      // 立即播放放置音效
       playSound('drop');
     }
     setHoverPos(null);
