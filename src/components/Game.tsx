@@ -5,20 +5,44 @@ import { GameOver } from './GameOver';
 import { useState, useRef, useEffect } from 'react';
 import { getColorClass } from '../utils/blocks';
 
-// 音效
-const SOUNDS = {
-  drop: 'https://cdn.freesound.org/previews/531/531947_5765482-lq.mp3',
-  clear: 'https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3',
-  combo: 'https://assets.mixkit.co/active_storage/sfx/1997/1997-preview.mp3',
-  gameOver: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
-};
+// 使用 Web Audio API 生成音效
+const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-// 预加载音频
-const audioCache: Record<string, HTMLAudioElement> = {};
-Object.entries(SOUNDS).forEach(([key, url]) => {
-  audioCache[key] = new Audio(url);
-  audioCache[key].preload = 'auto';
-});
+function playTone(frequency: number, duration: number, type: OscillatorType = 'sine') {
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  oscillator.frequency.value = frequency;
+  oscillator.type = type;
+  
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+  
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + duration);
+}
+
+function playDropSound() {
+  playTone(800, 0.1, 'square');
+}
+
+function playClearSound() {
+  playTone(523, 0.15, 'sine');
+  setTimeout(() => playTone(659, 0.15, 'sine'), 100);
+}
+
+function playComboSound() {
+  playTone(523, 0.1, 'sine');
+  setTimeout(() => playTone(659, 0.1, 'sine'), 80);
+  setTimeout(() => playTone(784, 0.15, 'sine'), 160);
+}
+
+function playGameOverSound() {
+  playTone(200, 0.3, 'sawtooth');
+}
 
 function getFirstBlockCell(shape: number[][]): { row: number; col: number } {
   for (let i = 0; i < shape.length; i++) {
@@ -49,13 +73,13 @@ export function Game() {
   // 记录上次播放音效的时间
   const lastSoundTimeRef = useRef(0);
 
-  // 播放音效（简单直接）
+  // 播放音效（使用 Web Audio API）
   const playSound = (type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
     if (!soundEnabled && type !== 'gameOver') return;
     
-    // 300ms 内不重复播放
+    // 100ms 内不重复播放
     const now = Date.now();
-    if (now - lastSoundTimeRef.current < 300) {
+    if (now - lastSoundTimeRef.current < 100) {
       console.log('[音效] 防抖跳过:', type);
       return;
     }
@@ -63,11 +87,15 @@ export function Game() {
     
     console.log('[音效] 播放:', type, '时间:', now);
     
-    const audio = audioCache[type];
-    if (audio) {
-      audio.currentTime = 0;
-      audio.volume = 0.6;
-      audio.play().catch(() => {});
+    try {
+      switch (type) {
+        case 'drop': playDropSound(); break;
+        case 'clear': playClearSound(); break;
+        case 'combo': playComboSound(); break;
+        case 'gameOver': playGameOverSound(); break;
+      }
+    } catch (e) {
+      console.error('[音效] 播放失败:', e);
     }
   };
 
