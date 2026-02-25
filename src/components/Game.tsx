@@ -5,20 +5,16 @@ import { GameOver } from './GameOver';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { getColorClass } from '../utils/blocks';
 
-// 音效 URLs - 使用更可靠的音效源
+// 音效 URLs
 const SOUNDS = {
   bgm: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
-  // 石头砸地面音效 - 使用多个备选
-  drop: [
-    'https://cdn.freesound.org/previews/531/531947_5765482-lq.mp3', // 石头撞击
-    'https://cdn.freesound.org/previews/171/171104_2394245-lq.mp3', // 砖块放置
-  ],
+  drop: 'https://cdn.freesound.org/previews/531/531947_5765482-lq.mp3',
   clear: 'https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3',
   combo: 'https://assets.mixkit.co/active_storage/sfx/1997/1997-preview.mp3',
   gameOver: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
 };
 
-// 找到方块的第一个砖块位置（相对于矩阵左上角）
+// 找到方块的第一个砖块位置
 function getFirstBlockCell(shape: number[][]): { row: number; col: number } {
   for (let i = 0; i < shape.length; i++) {
     for (let j = 0; j < shape[i].length; j++) {
@@ -38,7 +34,6 @@ export function Game() {
   const canPlaceBlock = useGameStore((state) => state.canPlaceBlock);
   const board = useGameStore((state) => state.board);
   const clearingCells = useGameStore((state) => state.clearingCells);
-  const score = useGameStore((state) => state.score);
   
   const [hoverPos, setHoverPos] = useState<{row: number, col: number} | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -51,45 +46,30 @@ export function Game() {
   const comboSoundRef = useRef<HTMLAudioElement | null>(null);
   const gameOverSoundRef = useRef<HTMLAudioElement | null>(null);
   
-  // Board ref for touch events
+  // Board ref
   const boardRef = useRef<HTMLDivElement>(null);
-  
-  // 防止音效重复播放的标记
-  const lastScore = useRef<number>(0);
-  const isClearingRef = useRef<boolean>(false);
 
   // Initialize audio elements
   useEffect(() => {
-    // 初始化背景音乐
     bgmRef.current = new Audio(SOUNDS.bgm);
     bgmRef.current.loop = true;
     bgmRef.current.volume = 0.3;
     
-    // 初始化放置音效 - 使用第一个备选
-    dropSoundRef.current = new Audio(SOUNDS.drop[0]);
+    dropSoundRef.current = new Audio(SOUNDS.drop);
     dropSoundRef.current.volume = 0.7;
     dropSoundRef.current.preload = 'auto';
     
-    // 初始化消除音效
     clearSoundRef.current = new Audio(SOUNDS.clear);
     clearSoundRef.current.volume = 0.6;
     clearSoundRef.current.preload = 'auto';
     
-    // 初始化连击音效
     comboSoundRef.current = new Audio(SOUNDS.combo);
     comboSoundRef.current.volume = 0.6;
     comboSoundRef.current.preload = 'auto';
     
-    // 初始化游戏结束音效
     gameOverSoundRef.current = new Audio(SOUNDS.gameOver);
     gameOverSoundRef.current.volume = 0.7;
     gameOverSoundRef.current.preload = 'auto';
-    
-    // 预加载所有音频
-    const allAudio = [bgmRef.current, dropSoundRef.current, clearSoundRef.current, comboSoundRef.current, gameOverSoundRef.current];
-    allAudio.forEach(audio => {
-      audio.load();
-    });
     
     return () => {
       if (bgmRef.current) {
@@ -98,10 +78,10 @@ export function Game() {
     };
   }, []);
 
-  // Play sound effects with retry
+  // Play sound effects - 受 soundEnabled 控制
   const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
-    // 检查音效是否开启（drop 和 gameOver 始终播放，背景音乐由 soundEnabled 控制）
-    if (type !== 'drop' && type !== 'gameOver' && !soundEnabled) {
+    // 所有音效都受开关控制（除了游戏结束）
+    if (!soundEnabled && type !== 'gameOver') {
       return;
     }
     
@@ -114,47 +94,30 @@ export function Game() {
     
     const audio = soundMap[type];
     if (audio) {
-      // 重置播放位置并播放
       audio.currentTime = 0;
-      const playPromise = audio.play();
-      
-      if (playPromise !== undefined) {
-        playPromise.catch((error) => {
-          console.log('Audio play failed:', type, error);
-          // 如果第一个 drop 音效失败，尝试第二个
-          if (type === 'drop' && SOUNDS.drop[1]) {
-            const backupAudio = new Audio(SOUNDS.drop[1]);
-            backupAudio.volume = 0.7;
-            backupAudio.play().catch(() => {});
-          }
-        });
-      }
+      audio.play().catch(() => {});
     }
   }, [soundEnabled]);
 
-  // Toggle background music
-  const toggleSound = () => {
-    if (!soundEnabled) {
-      setSoundEnabled(true);
-      if (bgmRef.current) {
+  // Toggle sound
+  const toggleSound = useCallback(() => {
+    setSoundEnabled(prev => {
+      const newValue = !prev;
+      if (newValue && bgmRef.current) {
         bgmRef.current.play().catch(() => {});
-      }
-    } else {
-      setSoundEnabled(false);
-      if (bgmRef.current) {
+      } else if (!newValue && bgmRef.current) {
         bgmRef.current.pause();
       }
-    }
-  };
+      return newValue;
+    });
+  }, []);
 
-  // Handle clearing animation - 只处理动画，不播放音效
+  // Handle clearing animation
   useEffect(() => {
     if (clearingCells.length > 0) {
-      // Convert to Set for quick lookup
       const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
       setAnimatingCells(cellSet);
       
-      // Clear animation after duration
       const timer = setTimeout(() => {
         setAnimatingCells(new Set());
       }, 400);
@@ -162,28 +125,6 @@ export function Game() {
       return () => clearTimeout(timer);
     }
   }, [clearingCells]);
-
-  // Handle clearing sound - 基于分数变化，只播放一次
-  useEffect(() => {
-    // 只在分数增加且不是第一次时播放消除音效
-    if (score > lastScore.current && lastScore.current >= 0 && !isClearingRef.current) {
-      isClearingRef.current = true;
-      
-      // 计算消除的行/列数
-      const scoreDiff = score - lastScore.current;
-      
-      // 延迟播放消除音效
-      setTimeout(() => {
-        if (scoreDiff >= 30) {
-          playSound('combo');
-        } else if (scoreDiff > 0) {
-          playSound('clear');
-        }
-        isClearingRef.current = false;
-      }, 100);
-    }
-    lastScore.current = score;
-  }, [score, playSound]);
 
   // Game over sound
   useEffect(() => {
@@ -195,34 +136,45 @@ export function Game() {
     }
   }, [isGameOver, playSound]);
 
-  // Handle cell click for placing block
+  // Handle cell click
   const handleCellClick = (row: number, col: number) => {
     if (!selectedBlock) return;
     
-    // 计算第一个砖块的偏移
     const firstCell = getFirstBlockCell(selectedBlock.shape);
-    
-    // 调整放置位置，使第一个砖块出现在点击位置
     const adjustedPos = {
       row: row - firstCell.row,
       col: col - firstCell.col,
     };
     
+    const currentScore = useGameStore.getState().score;
     const result = placeSelectedBlock(adjustedPos);
+    
     if (result.success) {
-      // 立即播放放置音效
-      playSound('drop');
+      // 检查是否有消除（分数是否增加）
+      const newScore = useGameStore.getState().score;
+      if (newScore > currentScore) {
+        // 有消除，播放消除音效
+        const scoreDiff = newScore - currentScore;
+        if (scoreDiff >= 30) {
+          playSound('combo');
+        } else {
+          playSound('clear');
+        }
+      } else {
+        // 无消除，播放放置音效
+        playSound('drop');
+      }
     }
   };
 
-  // Handle cell hover (PC)
+  // Handle cell hover
   const handleCellHover = (row: number, col: number) => {
     if (selectedBlock) {
       setHoverPos({ row, col });
     }
   };
 
-  // Handle touch move (Mobile)
+  // Handle touch move
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!selectedBlock || !boardRef.current) return;
     
@@ -238,7 +190,7 @@ export function Game() {
     }
   }, [selectedBlock]);
 
-  // Handle touch end (Mobile)
+  // Handle touch end
   const handleTouchEnd = useCallback(() => {
     if (!selectedBlock || !hoverPos) return;
     
@@ -248,22 +200,31 @@ export function Game() {
       col: hoverPos.col - firstCell.col,
     };
     
+    const currentScore = useGameStore.getState().score;
     const result = placeSelectedBlock(adjustedPos);
+    
     if (result.success) {
-      // 立即播放放置音效
-      playSound('drop');
+      const newScore = useGameStore.getState().score;
+      if (newScore > currentScore) {
+        const scoreDiff = newScore - currentScore;
+        if (scoreDiff >= 30) {
+          playSound('combo');
+        } else {
+          playSound('clear');
+        }
+      } else {
+        playSound('drop');
+      }
     }
     setHoverPos(null);
   }, [selectedBlock, hoverPos, placeSelectedBlock, playSound]);
 
-  // Check if a cell should show preview
+  // Check preview
   const shouldShowPreview = (rowIndex: number, colIndex: number): boolean => {
     if (!selectedBlock || !hoverPos) return false;
     
     const { shape } = selectedBlock;
     const firstCell = getFirstBlockCell(shape);
-    
-    // 计算相对于第一个砖块的位置
     const relRow = rowIndex - hoverPos.row + firstCell.row;
     const relCol = colIndex - hoverPos.col + firstCell.col;
     
@@ -273,7 +234,6 @@ export function Game() {
     return shape[relRow][relCol] === 1;
   };
 
-  // Check if preview position is valid
   const isPreviewValid = (): boolean => {
     if (!selectedBlock || !hoverPos) return false;
     
@@ -286,7 +246,6 @@ export function Game() {
     return canPlaceBlock(selectedBlock, adjustedPos);
   };
 
-  // Helper function to get cell color class
   const getCellColorClass = (cell: number): string => {
     const colors: Record<number, string> = {
       1: 'bg-gradient-to-br from-block-cyan to-cyan-600',
@@ -299,18 +258,15 @@ export function Game() {
     return colors[cell] || '';
   };
 
-  // Get preview color based on selected block
   const getPreviewColor = () => {
     if (!selectedBlock) return '';
     return getColorClass(selectedBlock.color);
   };
 
-  // Check if cell is animating
   const isCellAnimating = (row: number, col: number) => {
     return animatingCells.has(`${row}-${col}`);
   };
 
-  // Get hint text
   const getHintText = () => {
     if (isGameOver) return '';
     if (selectedBlock) {
@@ -327,7 +283,6 @@ export function Game() {
         <ScoreBoard onSoundToggle={toggleSound} soundEnabled={soundEnabled} />
         <CurrentScore />
         
-        {/* Game Board with click and touch handling */}
         <div className="relative mb-4">
           <div 
             ref={boardRef}
@@ -350,10 +305,7 @@ export function Game() {
                       onMouseLeave={() => setHoverPos(null)}
                       className={`
                         aspect-square rounded-sm transition-all duration-150 cursor-pointer
-                        ${cell === 0 
-                          ? 'bg-white/5 hover:bg-white/10' 
-                          : ''
-                        }
+                        ${cell === 0 ? 'bg-white/5 hover:bg-white/10' : ''}
                         ${showPreview && previewValid
                           ? getPreviewColor() + ' opacity-60 ring-2 ring-green-400 shadow-lg'
                           : showPreview && !previewValid
@@ -378,7 +330,6 @@ export function Game() {
         <button
           onClick={() => {
             restartGame();
-            setAnimatingCells(new Set());
             if (soundEnabled && bgmRef.current) {
               bgmRef.current.play().catch(() => {});
             }
@@ -388,7 +339,6 @@ export function Game() {
           🔄 重新开始
         </button>
 
-        {/* Hint text - always visible */}
         <div className="mt-3 h-6 flex items-center justify-center">
           <span className="text-white/60 text-sm">
             {getHintText()}
