@@ -52,6 +52,9 @@ export function Game() {
   
   // Board ref for touch events
   const boardRef = useRef<HTMLDivElement>(null);
+  
+  // 防止音效重复播放的标记
+  const lastClearingTime = useRef<number>(0);
 
   // Initialize audio elements
   useEffect(() => {
@@ -140,18 +143,24 @@ export function Game() {
   // Handle clearing animation and sound
   useEffect(() => {
     if (clearingCells.length > 0) {
-      // Convert to Set for quick lookup
-      const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
-      setAnimatingCells(cellSet);
-      
-      // 延迟播放消除音效，确保放置音效先播放
-      setTimeout(() => {
-        if (clearingCells.length >= 20) {
-          playSound('combo');
-        } else {
-          playSound('clear');
-        }
-      }, 100);
+      // 防止短时间内重复触发音效（500ms内只播放一次）
+      const now = Date.now();
+      if (now - lastClearingTime.current > 500) {
+        lastClearingTime.current = now;
+        
+        // Convert to Set for quick lookup
+        const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
+        setAnimatingCells(cellSet);
+        
+        // 延迟播放消除音效，确保放置音效先播放
+        setTimeout(() => {
+          if (clearingCells.length >= 20) {
+            playSound('combo');
+          } else {
+            playSound('clear');
+          }
+        }, 100);
+      }
       
       // Clear animation after duration
       const timer = setTimeout(() => {
