@@ -7,14 +7,12 @@ import { getColorClass } from '../utils/blocks';
 
 // 音效 URLs
 const SOUNDS = {
-  bgm: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
   drop: 'https://cdn.freesound.org/previews/531/531947_5765482-lq.mp3',
   clear: 'https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3',
   combo: 'https://assets.mixkit.co/active_storage/sfx/1997/1997-preview.mp3',
   gameOver: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
 };
 
-// 找到方块的第一个砖块位置
 function getFirstBlockCell(shape: number[][]): { row: number; col: number } {
   for (let i = 0; i < shape.length; i++) {
     for (let j = 0; j < shape[i].length; j++) {
@@ -36,83 +34,34 @@ export function Game() {
   const clearingCells = useGameStore((state) => state.clearingCells);
   
   const [hoverPos, setHoverPos] = useState<{row: number, col: number} | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true); // 默认开启
   const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
   
-  // Audio refs
-  const bgmRef = useRef<HTMLAudioElement | null>(null);
-  const dropSoundRef = useRef<HTMLAudioElement | null>(null);
-  const clearSoundRef = useRef<HTMLAudioElement | null>(null);
-  const comboSoundRef = useRef<HTMLAudioElement | null>(null);
-  const gameOverSoundRef = useRef<HTMLAudioElement | null>(null);
-  
-  // Board ref
   const boardRef = useRef<HTMLDivElement>(null);
+  
+  // 防止重复播放音效
+  const lastSoundTime = useRef<number>(0);
 
-  // Initialize audio elements
-  useEffect(() => {
-    bgmRef.current = new Audio(SOUNDS.bgm);
-    bgmRef.current.loop = true;
-    bgmRef.current.volume = 0.3;
-    
-    dropSoundRef.current = new Audio(SOUNDS.drop);
-    dropSoundRef.current.volume = 0.7;
-    dropSoundRef.current.preload = 'auto';
-    
-    clearSoundRef.current = new Audio(SOUNDS.clear);
-    clearSoundRef.current.volume = 0.6;
-    clearSoundRef.current.preload = 'auto';
-    
-    comboSoundRef.current = new Audio(SOUNDS.combo);
-    comboSoundRef.current.volume = 0.6;
-    comboSoundRef.current.preload = 'auto';
-    
-    gameOverSoundRef.current = new Audio(SOUNDS.gameOver);
-    gameOverSoundRef.current.volume = 0.7;
-    gameOverSoundRef.current.preload = 'auto';
-    
-    return () => {
-      if (bgmRef.current) {
-        bgmRef.current.pause();
-      }
-    };
-  }, []);
-
-  // Play sound effects - 受 soundEnabled 控制
+  // 播放音效 - 简单直接
   const playSound = useCallback((type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
-    // 游戏结束音效始终播放，其他音效受开关控制
-    if (type !== 'gameOver' && !soundEnabled) {
-      return;
-    }
+    if (!soundEnabled && type !== 'gameOver') return;
     
-    const soundMap = {
-      drop: dropSoundRef.current,
-      clear: clearSoundRef.current,
-      combo: comboSoundRef.current,
-      gameOver: gameOverSoundRef.current,
-    };
+    // 防止 100ms 内重复播放同类型音效
+    const now = Date.now();
+    if (now - lastSoundTime.current < 100) return;
+    lastSoundTime.current = now;
     
-    const audio = soundMap[type];
-    if (audio) {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    }
+    const audio = new Audio(SOUNDS[type]);
+    audio.volume = type === 'drop' ? 0.7 : 0.6;
+    audio.play().catch(() => {});
   }, [soundEnabled]);
 
-  // Toggle sound
+  // 切换音效
   const toggleSound = useCallback(() => {
-    setSoundEnabled(prev => {
-      const newValue = !prev;
-      if (newValue && bgmRef.current) {
-        bgmRef.current.play().catch(() => {});
-      } else if (!newValue && bgmRef.current) {
-        bgmRef.current.pause();
-      }
-      return newValue;
-    });
+    setSoundEnabled(prev => !prev);
   }, []);
 
-  // Handle clearing animation
+  // 处理消除动画
   useEffect(() => {
     if (clearingCells.length > 0) {
       const cellSet = new Set(clearingCells.map(c => `${c.row}-${c.col}`));
@@ -126,18 +75,15 @@ export function Game() {
     }
   }, [clearingCells]);
 
-  // Game over sound
+  // 游戏结束音效
   useEffect(() => {
     if (isGameOver) {
       playSound('gameOver');
-      if (bgmRef.current) {
-        bgmRef.current.pause();
-      }
     }
   }, [isGameOver, playSound]);
 
-  // Handle cell click
-  const handleCellClick = (row: number, col: number) => {
+  // 放置方块并播放音效
+  const placeBlockWithSound = useCallback((row: number, col: number) => {
     if (!selectedBlock) return;
     
     const firstCell = getFirstBlockCell(selectedBlock.shape);
@@ -149,29 +95,29 @@ export function Game() {
     const result = placeSelectedBlock(adjustedPos);
     
     if (result.success) {
-      // 直接使用返回的 clearedCells 判断是否有消除
-      if (result.clearedCells && result.clearedCells.length > 0) {
-        // 有消除，立即播放消除音效
-        if (result.clearedCells.length >= 20) {
+      // 判断是否有消除
+      const hasClear = result.clearedCells && result.clearedCells.length > 0;
+      
+      if (hasClear) {
+        // 有消除：播放消除音效
+        if (result.clearedCells!.length >= 20) {
           playSound('combo');
         } else {
           playSound('clear');
         }
       } else {
-        // 无消除，立即播放放置音效
+        // 无消除：播放放置音效
         playSound('drop');
       }
     }
+  }, [selectedBlock, placeSelectedBlock, playSound]);
+
+  // 点击处理
+  const handleCellClick = (row: number, col: number) => {
+    placeBlockWithSound(row, col);
   };
 
-  // Handle cell hover
-  const handleCellHover = (row: number, col: number) => {
-    if (selectedBlock) {
-      setHoverPos({ row, col });
-    }
-  };
-
-  // Handle touch move
+  // 触摸处理
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!selectedBlock || !boardRef.current) return;
     
@@ -187,33 +133,13 @@ export function Game() {
     }
   }, [selectedBlock]);
 
-  // Handle touch end
   const handleTouchEnd = useCallback(() => {
     if (!selectedBlock || !hoverPos) return;
-    
-    const firstCell = getFirstBlockCell(selectedBlock.shape);
-    const adjustedPos = {
-      row: hoverPos.row - firstCell.row,
-      col: hoverPos.col - firstCell.col,
-    };
-    
-    const result = placeSelectedBlock(adjustedPos);
-    
-    if (result.success) {
-      if (result.clearedCells && result.clearedCells.length > 0) {
-        if (result.clearedCells.length >= 20) {
-          playSound('combo');
-        } else {
-          playSound('clear');
-        }
-      } else {
-        playSound('drop');
-      }
-    }
+    placeBlockWithSound(hoverPos.row, hoverPos.col);
     setHoverPos(null);
-  }, [selectedBlock, hoverPos, placeSelectedBlock, playSound]);
+  }, [selectedBlock, hoverPos, placeBlockWithSound]);
 
-  // Check preview
+  // 预览逻辑
   const shouldShowPreview = (rowIndex: number, colIndex: number): boolean => {
     if (!selectedBlock || !hoverPos) return false;
     
@@ -295,7 +221,7 @@ export function Game() {
                     <div
                       key={`${rowIndex}-${colIndex}`}
                       onClick={() => handleCellClick(rowIndex, colIndex)}
-                      onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
+                      onMouseEnter={() => selectedBlock && setHoverPos({ row: rowIndex, col: colIndex })}
                       onMouseLeave={() => setHoverPos(null)}
                       className={`
                         aspect-square rounded-sm transition-all duration-150 cursor-pointer
@@ -322,21 +248,14 @@ export function Game() {
         <BlockSelector />
 
         <button
-          onClick={() => {
-            restartGame();
-            if (soundEnabled && bgmRef.current) {
-              bgmRef.current.play().catch(() => {});
-            }
-          }}
+          onClick={() => restartGame()}
           className="w-full mt-3 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 flex items-center justify-center gap-2"
         >
           🔄 重新开始
         </button>
 
         <div className="mt-3 h-6 flex items-center justify-center">
-          <span className="text-white/60 text-sm">
-            {getHintText()}
-          </span>
+          <span className="text-white/60 text-sm">{getHintText()}</span>
         </div>
       </div>
 
