@@ -6,6 +6,65 @@ import { Leaderboard } from './Leaderboard';
 import { useState, useRef, useEffect } from 'react';
 import { getColorClass } from '../utils/blocks';
 
+// 碎片接口
+interface Fragment {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  brightness: number;
+  angle: number;
+  distance: number;
+  rotation: number;
+  delay: number;
+}
+
+// 颜色配置
+const COLOR_VALUES: Record<number, string> = {
+  1: '#06b6d4', // cyan
+  2: '#a855f7', // purple
+  3: '#f97316', // orange
+  4: '#22c55e', // green
+  5: '#ec4899', // pink
+  6: '#eab308', // yellow
+};
+
+// 碎片亮度配置 (9个碎片的深浅变化)
+const FRAGMENT_BRIGHTNESS = [0.8, 1.0, 1.2, 1.0, 1.2, 0.8, 1.2, 0.8, 1.0];
+
+// 生成碎片
+function generateFragments(
+  row: number,
+  col: number,
+  cellValue: number,
+  cellSize: number
+): Fragment[] {
+  const baseColor = COLOR_VALUES[cellValue];
+  if (!baseColor) return [];
+  
+  const baseX = col * cellSize + cellSize / 2;
+  const baseY = row * cellSize + cellSize / 2;
+  
+  // 9个碎片，每个碎片一个方向
+  const angles = [
+    200, 270, 340,   // 上排：左上、上、右上
+    180, 0,   0,     // 中排：左、中心、右
+    160, 90,   20    // 下排：左下、下、右下
+  ];
+  
+  return Array.from({ length: 9 }, (_, i) => ({
+    id: `${row}-${col}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    x: baseX + (i % 3 - 1) * (cellSize / 6),  // 碎片初始偏移
+    y: baseY + (Math.floor(i / 3) - 1) * (cellSize / 6),
+    color: baseColor,
+    brightness: FRAGMENT_BRIGHTNESS[i],
+    angle: angles[i] + (Math.random() - 0.5) * 30,  // 添加随机偏移
+    distance: 30 + Math.random() * 40,
+    rotation: 180 + Math.random() * 540,
+    delay: Math.random() * 50,
+  }));
+}
+
 // 使用 Web Audio API 生成音效
 const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 
@@ -67,6 +126,7 @@ export function Game() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [fragments, setFragments] = useState<Fragment[]>([]);
   
   const boardRef = useRef<HTMLDivElement>(null);
   
@@ -104,14 +164,37 @@ export function Game() {
   // 切换音效
   const toggleSound = () => setSoundEnabled(prev => !prev);
 
-  // 消除动画
+  // 消除动画 + 碎片生成
   useEffect(() => {
     if (clearingCells.length > 0) {
       setAnimatingCells(new Set(clearingCells.map(c => `${c.row}-${c.col}`)));
-      const timer = setTimeout(() => setAnimatingCells(new Set()), 500);
+      
+      // 生成碎片
+      if (boardRef.current) {
+        const rect = boardRef.current.getBoundingClientRect();
+        const cellSize = (rect.width - 16) / 10; // 减去 padding
+        
+        // 获取当前棋盘状态的快照
+        const boardSnapshot = board.map(row => [...row]);
+        
+        const newFragments: Fragment[] = [];
+        clearingCells.forEach(cell => {
+          const cellValue = boardSnapshot[cell.row][cell.col];
+          if (cellValue !== 0) {
+            newFragments.push(...generateFragments(cell.row, cell.col, cellValue, cellSize));
+          }
+        });
+        setFragments(newFragments);
+      }
+      
+      // 清理
+      const timer = setTimeout(() => {
+        setAnimatingCells(new Set());
+        setFragments([]);
+      }, 800);
       return () => clearTimeout(timer);
     }
-  }, [clearingCells]);
+  }, [clearingCells, board]);
 
   // 游戏结束
   useEffect(() => {
@@ -260,7 +343,7 @@ export function Game() {
         
         <div className="relative mb-4">
           <div ref={boardRef} 
-            className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm"
+            className="bg-black/30 rounded-2xl p-2 backdrop-blur-sm relative overflow-hidden"
             style={{ touchAction: 'none' }}
             onTouchStart={handleTouchStart}
             onTouchMove={(e) => { e.preventDefault(); handleTouchMove(e); }} 
@@ -280,11 +363,33 @@ export function Game() {
                       ${preview && valid ? getPreviewColor() + ' opacity-60 ring-2 ring-green-400 shadow-lg' : ''}
                       ${preview && !valid ? 'bg-red-500/60 ring-2 ring-red-400' : ''}
                       ${!preview && cell !== 0 ? getCellColor(cell) + ' block-3d' : ''}
-                      ${animating ? 'clearing' : ''}`}
+                      ${animating ? 'cell-clearing' : ''}`}
                   />
                 );
               }))}
             </div>
+            
+            {/* 碎片容器 */}
+            {fragments.length > 0 && (
+              <div className="fragments-container">
+                {fragments.map(fragment => (
+                  <div
+                    key={fragment.id}
+                    className="fragment"
+                    style={{
+                      '--frag-x': `${fragment.x}px`,
+                      '--frag-y': `${fragment.y}px`,
+                      '--frag-color': fragment.color,
+                      '--frag-brightness': fragment.brightness,
+                      '--frag-angle': `${fragment.angle}deg`,
+                      '--frag-distance': `${fragment.distance}px`,
+                      '--frag-rotation': `${fragment.rotation}deg`,
+                      '--frag-delay': `${fragment.delay}ms`,
+                    } as React.CSSProperties}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
