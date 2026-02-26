@@ -2,6 +2,7 @@ import { useGameStore } from '../store/gameStore';
 import { BlockSelector } from './BlockSelector';
 import { ScoreBoard, CurrentScore } from './ScoreBoard';
 import { GameOver } from './GameOver';
+import { Leaderboard } from './Leaderboard';
 import { useState, useRef, useEffect } from 'react';
 import { getColorClass } from '../utils/blocks';
 
@@ -65,6 +66,7 @@ export function Game() {
   const [hoverPos, setHoverPos] = useState<{row: number, col: number} | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   
   const boardRef = useRef<HTMLDivElement>(null);
   
@@ -83,12 +85,9 @@ export function Game() {
     // 100ms 内不重复播放
     const now = Date.now();
     if (now - lastSoundTimeRef.current < 100) {
-      console.log('[音效] 防抖跳过:', type);
       return;
     }
     lastSoundTimeRef.current = now;
-    
-    console.log('[音效] 播放:', type, '时间:', now);
     
     try {
       switch (type) {
@@ -109,7 +108,7 @@ export function Game() {
   useEffect(() => {
     if (clearingCells.length > 0) {
       setAnimatingCells(new Set(clearingCells.map(c => `${c.row}-${c.col}`)));
-      const timer = setTimeout(() => setAnimatingCells(new Set()), 400);
+      const timer = setTimeout(() => setAnimatingCells(new Set()), 500);
       return () => clearTimeout(timer);
     }
   }, [clearingCells]);
@@ -122,10 +121,7 @@ export function Game() {
   // 核心：放置方块并播放音效
   const tryPlaceBlock = (row: number, col: number): boolean => {
     // 防止重复触发
-    if (isProcessingRef.current) {
-      console.log('[放置] 锁定中，跳过');
-      return false;
-    }
+    if (isProcessingRef.current) return false;
     if (!selectedBlock) return false;
     
     const firstCell = getFirstBlockCell(selectedBlock.shape);
@@ -133,13 +129,11 @@ export function Game() {
     
     // 锁定
     isProcessingRef.current = true;
-    console.log('[放置] 开始，位置:', adjustedPos);
     
     const result = placeSelectedBlock(adjustedPos);
     
     if (result.success) {
       const clearedCount = result.clearedCells?.length || 0;
-      console.log('[放置] 成功，消除数量:', clearedCount);
       
       if (clearedCount > 0) {
         // 有消除：播放消除音效
@@ -152,14 +146,12 @@ export function Game() {
       // 延迟解锁，防止快速重复
       setTimeout(() => { 
         isProcessingRef.current = false; 
-        console.log('[放置] 解锁');
       }, 300);
       return true;
     }
     
     // 放置失败，立即解锁
     isProcessingRef.current = false;
-    console.log('[放置] 失败');
     return false;
   };
 
@@ -259,7 +251,11 @@ export function Game() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0c29] via-[#302b63] to-[#24243e] flex items-center justify-center p-4">
       <div className="bg-white/5 rounded-3xl p-4 shadow-2xl backdrop-blur-lg max-w-md w-full">
-        <ScoreBoard onSoundToggle={toggleSound} soundEnabled={soundEnabled} />
+        <ScoreBoard 
+          onSoundToggle={toggleSound} 
+          soundEnabled={soundEnabled}
+          onLeaderboardOpen={() => setShowLeaderboard(true)}
+        />
         <CurrentScore />
         
         <div className="relative mb-4">
@@ -303,6 +299,7 @@ export function Game() {
       </div>
 
       <GameOver isOpen={isGameOver} />
+      <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
     </div>
   );
 }

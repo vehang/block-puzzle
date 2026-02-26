@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GameState, Block, Position } from '../types/game';
+import type { ScoreRecord } from '../types/leaderboard';
 import { generateBlocks, generateRandomBlock } from '../utils/blocks';
 import {
   createEmptyBoard,
@@ -12,7 +13,25 @@ import {
   COLOR_INDEX_MAP,
 } from '../utils/game';
 
+// 生成唯一ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// 格式化日期
+function formatDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
 interface GameStore extends GameState {
+  // 排行榜
+  leaderboard: ScoreRecord[];
+  
   // 消除动画相关
   clearingCells: { row: number; col: number }[];
   setClearingCells: (cells: { row: number; col: number }[]) => void;
@@ -21,11 +40,14 @@ interface GameStore extends GameState {
   selectBlock: (block: Block | null) => void;
   placeSelectedBlock: (pos: Position) => { success: boolean; clearedCells?: { row: number; col: number }[] };
   restartGame: () => void;
+  addScoreToLeaderboard: (score: number) => void;
   
   // Getters
   canPlaceBlock: (block: Block, pos: Position) => boolean;
   isBlockPlaceable: (block: Block) => boolean;
 }
+
+const MAX_LEADERBOARD_RECORDS = 10;
 
 export const useGameStore = create<GameStore>()(
   persist(
@@ -38,10 +60,35 @@ export const useGameStore = create<GameStore>()(
       isGameOver: false,
       selectedBlock: null,
       clearingCells: [],
+      leaderboard: [],
 
       // Set clearing cells for animation
       setClearingCells: (cells) => {
         set({ clearingCells: cells });
+      },
+
+      // Add score to leaderboard
+      addScoreToLeaderboard: (score) => {
+        const { leaderboard } = get();
+        if (score === 0) return; // 不记录0分
+        
+        const newRecord: ScoreRecord = {
+          id: generateId(),
+          score,
+          date: formatDate(new Date()),
+          rank: 0, // Will be calculated below
+        };
+        
+        // Add new record and sort by score (descending)
+        let newLeaderboard = [...leaderboard, newRecord]
+          .sort((a, b) => b.score - a.score)
+          .slice(0, MAX_LEADERBOARD_RECORDS)
+          .map((record, index) => ({
+            ...record,
+            rank: index + 1,
+          }));
+        
+        set({ leaderboard: newLeaderboard });
       },
 
       // Select a block
@@ -113,6 +160,13 @@ export const useGameStore = create<GameStore>()(
           clearingCells: clearedCells,
         });
 
+        // If game over, add score to leaderboard
+        if (gameOver && newScore > 0) {
+          setTimeout(() => {
+            get().addScoreToLeaderboard(newScore);
+          }, 500);
+        }
+
         return { success: true, clearedCells };
       },
 
@@ -150,6 +204,7 @@ export const useGameStore = create<GameStore>()(
       name: 'block-puzzle-storage',
       partialize: (state) => ({
         highScore: state.highScore,
+        leaderboard: state.leaderboard,
       }),
     }
   )
