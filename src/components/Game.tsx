@@ -17,6 +17,8 @@ interface Fragment {
   distance: number;
   rotation: number;
   delay: number;
+  shape: 'square' | 'circle' | 'triangle';  // 形状类型
+  size: number;  // 大小
 }
 
 // 颜色配置
@@ -45,23 +47,32 @@ function generateFragments(
   const baseX = col * cellSize + cellSize / 2;
   const baseY = row * cellSize + cellSize / 2;
   
-  // 9个碎片，每个碎片一个方向
+  // 9个碎片，混合方块、圆点和三角形
+  const shapes: Array<'square' | 'circle' | 'triangle'> = [
+    'square', 'circle', 'square',
+    'circle', 'triangle', 'circle',
+    'square', 'circle', 'square'
+  ];
+  
+  // 16个方向
   const angles = [
-    200, 270, 340,   // 上排：左上、上、右上
-    180, 0,   0,     // 中排：左、中心、右
-    160, 90,   20    // 下排：左下、下、右下
+    200, 240, 280, 320,   // 上排4个
+    180, 0,               // 中排2个
+    160, 100, 80, 20      // 下排4个
   ];
   
   return Array.from({ length: 9 }, (_, i) => ({
     id: `${row}-${col}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    x: baseX + (i % 3 - 1) * (cellSize / 6),  // 碎片初始偏移
+    x: baseX + (i % 3 - 1) * (cellSize / 6),
     y: baseY + (Math.floor(i / 3) - 1) * (cellSize / 6),
     color: baseColor,
     brightness: FRAGMENT_BRIGHTNESS[i],
-    angle: angles[i] + (Math.random() - 0.5) * 30,  // 添加随机偏移
-    distance: 30 + Math.random() * 40,
-    rotation: 180 + Math.random() * 540,
-    delay: Math.random() * 50,
+    angle: angles[i] + (Math.random() - 0.5) * 20,
+    distance: 25 + Math.random() * 35,
+    rotation: 90 + Math.random() * 450,
+    delay: Math.random() * 30,
+    shape: shapes[i],
+    size: 4 + Math.random() * 4,  // 4-8px
   }));
 }
 
@@ -373,7 +384,7 @@ export function Game() {
                 {fragments.map(fragment => (
                   <div
                     key={fragment.id}
-                    className="fragment"
+                    className={`fragment fragment-${fragment.shape}`}
                     style={{
                       '--frag-x': `${fragment.x}px`,
                       '--frag-y': `${fragment.y}px`,
@@ -383,6 +394,7 @@ export function Game() {
                       '--frag-distance': `${fragment.distance}px`,
                       '--frag-rotation': `${fragment.rotation}deg`,
                       '--frag-delay': `${fragment.delay}ms`,
+                      '--frag-size': `${fragment.size}px`,
                     } as React.CSSProperties}
                   />
                 ))}
