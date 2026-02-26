@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GameState, Block, Position } from '../types/game';
+import type { GameState, Block, Position, ClearingCell } from '../types/game';
 import type { ScoreRecord } from '../types/leaderboard';
 import { generateBlocks, generateRandomBlock } from '../utils/blocks';
 import {
@@ -33,8 +33,8 @@ interface GameStore extends GameState {
   leaderboard: ScoreRecord[];
   
   // 消除动画相关
-  clearingCells: { row: number; col: number }[];
-  setClearingCells: (cells: { row: number; col: number }[]) => void;
+  clearingCells: ClearingCell[];
+  setClearingCells: (cells: ClearingCell[]) => void;
   
   // Actions
   selectBlock: (block: Block | null) => void;
@@ -119,13 +119,16 @@ export const useGameStore = create<GameStore>()(
         const clearResult = checkClear(newBoard);
         let newScore = score + clearResult.score;
 
-        // Collect cleared cells for animation
-        const clearedCells: { row: number; col: number }[] = [];
+        // Collect cleared cells with color information (BEFORE clearing!)
+        const clearedCells: ClearingCell[] = [];
         
         // Add cells from cleared rows
         for (const row of clearResult.rows) {
           for (let col = 0; col < 10; col++) {
-            clearedCells.push({ row, col });
+            const colorIndex = newBoard[row][col];
+            if (colorIndex !== 0) {
+              clearedCells.push({ row, col, colorIndex });
+            }
           }
         }
         
@@ -134,7 +137,10 @@ export const useGameStore = create<GameStore>()(
           for (let row = 0; row < 10; row++) {
             // Avoid duplicates if both row and column are cleared
             if (!clearResult.rows.includes(row)) {
-              clearedCells.push({ row, col });
+              const colorIndex = newBoard[row][col];
+              if (colorIndex !== 0) {
+                clearedCells.push({ row, col, colorIndex });
+              }
             }
           }
         }

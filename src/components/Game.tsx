@@ -169,17 +169,15 @@ export function Game() {
     if (clearingCells.length > 0) {
       setAnimatingCells(new Set(clearingCells.map(c => `${c.row}-${c.col}`)));
       
-      // 生成碎片
+      // 生成碎片 - 使用 clearingCells 中的颜色信息
       if (boardRef.current) {
         const rect = boardRef.current.getBoundingClientRect();
-        const cellSize = (rect.width - 16) / 10; // 减去 padding
-        
-        // 获取当前棋盘状态的快照
-        const boardSnapshot = board.map(row => [...row]);
+        const cellSize = (rect.width - 16) / 10;
         
         const newFragments: Fragment[] = [];
         clearingCells.forEach(cell => {
-          const cellValue = boardSnapshot[cell.row][cell.col];
+          // 使用 cell.colorIndex 而不是从 board 读取
+          const cellValue = cell.colorIndex;
           if (cellValue !== 0) {
             newFragments.push(...generateFragments(cell.row, cell.col, cellValue, cellSize));
           }
@@ -194,7 +192,7 @@ export function Game() {
       }, 800);
       return () => clearTimeout(timer);
     }
-  }, [clearingCells, board]);
+  }, [clearingCells]);
 
   // 游戏结束
   useEffect(() => {

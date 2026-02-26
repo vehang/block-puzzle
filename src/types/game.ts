@@ -14,6 +14,13 @@ export interface Position {
   col: number;
 }
 
+// 消除的格子（包含颜色）
+export interface ClearingCell {
+  row: number;
+  col: number;
+  colorIndex: number;  // 颜色索引 (1-6)
+}
+
 // 游戏状态
 export interface GameState {
   board: number[][];       // 10x10 棋盘，0=空，1-6=颜色索引
