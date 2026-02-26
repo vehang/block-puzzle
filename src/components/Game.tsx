@@ -151,7 +151,7 @@ export function Game() {
 
   // 播放音效（使用 Web Audio API）
   const playSound = (type: 'drop' | 'clear' | 'combo' | 'gameOver') => {
-    if (!soundEnabled && type !== 'gameOver') return;
+    if (!soundEnabled) return;  // 所有音效都受开关控制
     
     // 100ms 内不重复播放
     const now = Date.now();
